@@ -11,7 +11,13 @@ with sync_playwright() as playwright:
     try:
         config = get_config()
         browser = playwright.chromium.launch(headless=True)
-        context = browser.new_context(proxy={"server": config['proxy']})
+
+        # 仅当配置了代理时才传递 proxy 参数，避免 Playwright 收到 undefined
+        if config['proxy']:
+            context = browser.new_context(proxy={"server": config['proxy']})
+        else:
+            context = browser.new_context()
+
         context.add_cookies(parse_to_playwright_cookies(config['cookies']))
 
         page = context.new_page()
@@ -54,8 +60,10 @@ with sync_playwright() as playwright:
         error_details = traceback.format_exc()
         print(error_details)
 
-        try :
-            screenshot = page.screenshot(path='error.png',full_page=True)
+        # 当异常发生在创建 page 之前时，避免引用未定义的 page
+        try:
+            if 'page' in locals() and page is not None:
+                page.screenshot(path='error.png', full_page=True)
         except Exception as e:
             print(e)
 
