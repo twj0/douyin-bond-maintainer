@@ -11,18 +11,40 @@ with sync_playwright() as playwright:
     try:
         config = get_config()
         browser = playwright.chromium.launch(headless=True)
+        
+        context = None
+        page = None
+        
+        # 代理重试逻辑
+        proxies_to_try = config.get('proxies', [])
+        if not proxies_to_try:
+            proxies_to_try.append(None) # 添加一个空的代理，用于无代理访问
 
-        # 仅当配置了代理时才传递 proxy 参数，避免 Playwright 收到 undefined
-        if config['proxy']:
-            context = browser.new_context(proxy={"server": config['proxy']})
-        else:
-            context = browser.new_context()
+        for proxy in proxies_to_try:
+            try:
+                print(f"尝试使用代理: {proxy}" if proxy else "尝试不使用代理进行连接...")
+                
+                context_options = {}
+                if proxy:
+                    context_options['proxy'] = {"server": proxy}
 
-        context.add_cookies(parse_to_playwright_cookies(config['cookies']))
-
-        page = context.new_page()
-
-        page.goto("https://www.douyin.com/?recommend=1")
+                context = browser.new_context(**context_options)
+                context.add_cookies(parse_to_playwright_cookies(config['cookies']))
+                page = context.new_page()
+                
+                page.goto("https://www.douyin.com/?recommend=1", timeout=30000)
+                
+                print("连接成功！")
+                break # 连接成功，跳出循环
+            except Exception as e:
+                print(f"使用代理 {proxy} 连接失败: {e}")
+                if context:
+                    context.close()
+                page = None # 重置 page
+                continue # 尝试下一个代理
+        
+        if not page:
+            raise RuntimeError("所有代理都尝试失败，无法连接到抖音。")
         page.wait_for_load_state("domcontentloaded")
         page.wait_for_timeout(1500)
 
